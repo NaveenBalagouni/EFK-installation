@@ -1,0 +1,10 @@
+image: docker.elastic.co/elasticsearch/elasticsearch:7.17.15
+replicas: 1
+
+security:
+  elasticPassword: "Elastic@123"
+  kibanaPassword: "kibana@123"
+  fluentdPassword: "fluentd@123"
+
+
+

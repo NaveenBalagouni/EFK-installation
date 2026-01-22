@@ -1,0 +1,16 @@
+image: docker.elastic.co/kibana/kibana:7.17.15
+
+elasticsearchHost: elasticsearch.elastic.svc.cluster.local
+username: elastic
+password: "Elastic@123"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: efk-kibana.ssd-uat.opsmx.org
+  path: /
+  tls:
+    enabled: false
+    secretName: ""
+
+

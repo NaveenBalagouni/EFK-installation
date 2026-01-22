@@ -1,0 +1,11 @@
+fluentd:
+  image: "fluent/fluentd-kubernetes-daemonset:v1.19.0-debian-elasticsearch7-1.1"
+  elasticsearch:
+    host: "elasticsearch.elastic.svc.cluster.local"
+    port: 9200
+    username: "elastic"
+    password: "Elastic@123"
+    indexPrefix: "ssd-k8s-logs"
+
+
+

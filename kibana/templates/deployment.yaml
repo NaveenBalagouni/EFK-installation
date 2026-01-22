@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: elastic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: {{ .Values.image }}
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: http://{{ .Values.elasticsearchHost }}:9200
+        - name: ELASTICSEARCH_USERNAME
+          value: {{ .Values.username }}
+        - name: ELASTICSEARCH_PASSWORD
+          value: {{ .Values.password }}
+        ports:
+        - containerPort: 5601

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: fluentd
+description: Fluentd subchart for Kubernetes log collection
+type: application
+version: 0.1.0
+appVersion: "1.16"
+
+
+
