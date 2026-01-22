@@ -1,113 +1,62 @@
-[# EFK-installation
+Setup Fluentd on critical environments for log data collection and integrate with elasticsearch
+Architecture Overview
+Kubernetes Node Logs
+   (/var/log/containers/*.log)
+              │
+              ▼
+        Fluentd (DaemonSet)
+              │
+              ▼
+      Elasticsearch (StatefulSet)
+              │
+              ▼
+          Kibana (Ingress/UI)
 
-Absolutely! Since you want a **ready-to-use, fully structured Helm chart setup** for EFK (Elasticsearch, Fluentd, Kibana) with **separate directories for each subchart** and a parent chart, I will outline the **entire structure and installation steps** for a production-ready deployment.
-
-I’ll provide a **tested folder structure, Helm templates, and commands**. You can copy it directly to your environment.
-
----
-
-# **EFK Stack Helm Chart Structure**
-
-```
-efk-stack/
+Scope of This Document
+This document covers only the Helm sub-charts under:
+RepoDir:
+├── elasticsearch/
+├── kibana/
+└── fluentd/
+Elasticsearch Helm Chart
+Directory Structure
+elasticsearch/
 ├── Chart.yaml
 ├── values.yaml
-├── charts/
-│   ├── elasticsearch/
-│   │   ├── Chart.yaml
-│   │   ├── values.yaml
-│   │   └── templates/
-│   │       ├── secret.yaml
-│   │       ├── service.yaml
-│   │       └── statefulset.yaml
-│   ├── kibana/
-│   │   ├── Chart.yaml
-│   │   ├── values.yaml
-│   │   └── templates/
-│   │       ├── deployment.yaml
-│   │       ├── ingress.yaml
-│   │       └── service.yaml
-│   └── fluentd/
-│       ├── Chart.yaml
-│       ├── values.yaml
-│       └── templates/
-│           ├── clusterrole.yaml
-│           ├── clusterrolebinding.yaml
-│           ├── configmap.yaml
-│           ├── daemonset.yaml
-│           └── serviceaccount.yaml
-```
+└── templates/
+    ├── secret.yaml
+    ├── service.yaml
+    └── statefulset.yaml
 
----
+File Purpose
+Defines metadata for the Elasticsearch Helm chart.
+Tested  elasticsearch/Chart.yaml
 
-# **1️⃣ Parent Chart (`efk-stack/Chart.yaml`)**
-
-```yaml
 apiVersion: v2
-name: efk-stack
-description: Parent Helm chart for EFK stack
+name: elasticsearch
+description: Elasticsearch subchart for EFK Stack
 type: application
 version: 0.1.0
 appVersion: "7.17.15"
 
-dependencies:
-  - name: elasticsearch
-    version: 0.1.0
-    repository: "file://charts/elasticsearch"
-  - name: kibana
-    version: 0.1.0
-    repository: "file://charts/kibana"
-  - name: fluentd
-    version: 0.1.0
-    repository: "file://charts/fluentd"
-```
+Explanation
+Field
+Meaning
+apiVersion: v2
+Helm 3 chart format
+name
+Chart name (used by parent chart)
+type
+Application workload
+version
+Helm chart version
+appVersion
+Elasticsearch version
 
----
+File Purpose
+Defines default configuration values for Elasticsearch.
+Tested elasticsearch/values.yaml
 
-# **2️⃣ Parent Chart values.yaml**
-
-```yaml
-elasticsearch:
-  image: docker.elastic.co/elasticsearch/elasticsearch:7.17.15
-  replicas: 1
-  security:
-    elasticPassword: "Elastic@123"
-    kibanaPassword: "kibana@123"
-    fluentdPassword: "fluentd@123"
-
-kibana:
-  image: docker.elastic.co/kibana/kibana:7.17.15
-  elasticsearchHost: elasticsearch.elastic.svc.cluster.local
-  username: "elastic"
-  password: "Elastic@123"
-  ingress:
-    enabled: true
-    className: nginx
-    host: kibana-efk.ssd-uat.opsmx.org
-    path: /
-    tls:
-      enabled: false
-
-fluentd:
-  fluentd:
-    image: fluent/fluentd-kubernetes-daemonset:v1.19.0-debian-elasticsearch7-1.1
-    elasticsearch:
-      host: elasticsearch.elastic.svc.cluster.local
-      port: 9200
-      username: "elastic"
-      password: "Elastic@123"
-      indexPrefix: "ssd-k8s-logs"
-```
-
----
-
-# **3️⃣ Subchart Templates**
-
-## **3.1 Elasticsearch**
-
-* **values.yaml**
-
-```yaml
 image: docker.elastic.co/elasticsearch/elasticsearch:7.17.15
 replicas: 1
 
@@ -115,11 +64,23 @@ security:
   elasticPassword: "Elastic@123"
   kibanaPassword: "kibana@123"
   fluentdPassword: "fluentd@123"
-```
 
-* **templates/secret.yaml**
+Explanation
+Key
+Description
+image
+Elasticsearch container image
+replicas
+Number of Elasticsearch nodes
+security.*
+Passwords for system users
 
-```yaml
+Note: These values are injected into Kubernetes Secrets.
+
+
+File Purpose
+Stores Elasticsearch credentials securely.
+Tested elasticsearch/templates/secret.yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -130,11 +91,26 @@ stringData:
   elastic: {{ .Values.security.elasticPassword }}
   kibana_system: {{ .Values.security.kibanaPassword }}
   fluentd: {{ .Values.security.fluentdPassword }}
-```
 
-* **templates/service.yaml**
 
-```yaml
+
+
+Explanation
+Element
+Purpose
+Secret
+Secure password storage
+stringData
+Plain-text input (auto-encoded)
+Helm template
+Pulls values from values.yaml
+
+Prevents hardcoding credentials in Pods
+Used by Elasticsearch, Kibana, Fluentd
+File Purpose
+Exposes Elasticsearch internally inside the cluster.
+Tested elasticsearch/templates/service.yaml
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -155,11 +131,25 @@ spec:
       port: 9300
       targetPort: 9300
   type: ClusterIP
-```
 
-* **templates/statefulset.yaml**
 
-```yaml
+
+
+Explanation
+Port
+Purpose
+9200
+    REST / HTTP API
+9300
+Node-to-node transport
+
+Used by:
+Fluentd → log ingestion
+Kibana → search & visualization
+File Purpose
+Runs Elasticsearch as a stateful workload.
+Tested elasticsearch/templates/statefulset.yaml
+
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -191,16 +181,68 @@ spec:
               key: elastic
         ports:
         - containerPort: 9200
-```
 
----
 
-## **3.2 Kibana**
 
-* **values.yaml**
 
-```yaml
+kind: StatefulSet
+replicas: {{ .Values.replicas }}
+✔ Stable pod identity
+✔ Supports persistent storage
+
+Environment Variables
+- name: discovery.type
+  value: single-node
+➡ Runs Elasticsearch in single-node mode
+- name: xpack.security.enabled
+  value: "true"
+➡ Enables authentication & security
+
+Password Injection
+valueFrom:
+  secretKeyRef:
+    name: elastic-credentials
+➡ Secure password loading at runtime
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Kibana Helm Chart
+Directory Structure
+charts/kibana/
+├── Chart.yaml
+├── values.yaml
+└── templates/
+    ├── deployment.yaml
+    ├── service.yaml
+    └── ingress.yaml
+Purpose
+Defines metadata for Kibana chart.
+Tested kibana/Chart.yaml
+apiVersion: v2
+name: kibana
+description: Kibana subchart for Elasticsearch visualization
+type: application
+version: 0.1.0
+appVersion: "7.17.15"
+
+Kibana version must match Elasticsearch version.
+Tested  kibana/values.yaml
+
 image: docker.elastic.co/kibana/kibana:7.17.15
+
 elasticsearchHost: elasticsearch.elastic.svc.cluster.local
 username: elastic
 password: "Elastic@123"
@@ -208,16 +250,23 @@ password: "Elastic@123"
 ingress:
   enabled: true
   className: nginx
-  host: kibana-efk.ssd-uat.opsmx.org
+  host: efk-kibana.ssd-uat.opsmx.org
   path: /
   tls:
     enabled: false
     secretName: ""
-```
 
-* **templates/deployment.yaml**
 
-```yaml
+Explanation
+Field
+Purpose
+elasticsearchHost
+ES service DNS
+username/password
+Authentication
+
+Tested kibana/templates/deployment.yaml
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -245,32 +294,34 @@ spec:
           value: {{ .Values.password }}
         ports:
         - containerPort: 5601
-```
 
-* **templates/service.yaml**
 
-```yaml
-apiVersion: v1
+
+
+
+
+File Purpose
+Runs Kibana as a stateless service.
+Key Configurations
+env:
+- name: ELASTICSEARCH_HOSTS
+➡ Tells Kibana where Elasticsearch is
+- name: ELASTICSEARCH_USERNAME
+- name: ELASTICSEARCH_PASSWORD
+➡ Enables secure connection
+2.4 templates/service.yaml
 kind: Service
-metadata:
-  name: kibana
-  namespace: elastic
-  labels:
-    app: kibana
-spec:
-  selector:
-    app: kibana
-  ports:
-    - name: http
-      protocol: TCP
-      port: 5601
-      targetPort: 5601
-  type: ClusterIP
-```
+type: ClusterIP
+port: 5601
 
-* **templates/ingress.yaml**
+Port
+Purpose
+5601
+Kibana UI
 
-```yaml
+Purpose
+Exposes Kibana externally.
+Tested kibana/templates/ingress.yaml
 {{- if .Values.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -292,38 +343,67 @@ spec:
                 port:
                   number: 5601
 {{- end }}
-```
 
----
 
-## **3.3 Fluentd**
 
-* **values.yaml**
 
-```yaml
+host: kibana-efk.example.com
+✔ Supports NGINX
+✔ TLS can be enabled later
+Fluentd Helm Chart
+Directory Structure
+charts/fluentd/
+├── Chart.yaml
+├── values.yaml
+└── templates/
+    ├── serviceaccount.yaml
+    ├── clusterrole.yaml
+    ├── clusterrolebinding.yaml
+    ├── configmap.yaml
+    └── daemonset.yaml
+Defines Fluentd logging agent metadata.
+Tested fluentd/Chart.yaml
+apiVersion: v2
+name: fluentd
+description: Fluentd subchart for Kubernetes log collection
+type: application
+version: 0.1.0
+appVersion: "1.16"
+
+
+Tested fluentd/values.yaml
+
 fluentd:
-  image: fluent/fluentd-kubernetes-daemonset:v1.19.0-debian-elasticsearch7-1.1
+  image: "fluent/fluentd-kubernetes-daemonset:v1.19.0-debian-elasticsearch7-1.1"
   elasticsearch:
     host: "elasticsearch.elastic.svc.cluster.local"
     port: 9200
     username: "elastic"
     password: "Elastic@123"
     indexPrefix: "ssd-k8s-logs"
-```
 
-* **templates/serviceaccount.yaml**
-
-```yaml
+Explanation
+Defines:
+ES destination
+Index naming
+Authentication
+Tested fluentd/templates/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: fluentd
   namespace: logging
-```
 
-* **templates/clusterrole.yaml**
 
-```yaml
+
+
+Purpose
+Provides identity for Fluentd Pods.
+kind: ServiceAccount
+Required for Kubernetes API access.
+Purpose
+Allows Fluentd to read Kubernetes metadata.
+Tested fluentd/templates/clusterrole.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -344,11 +424,18 @@ rules:
       - get
       - list
       - watch
-```
 
-* **templates/clusterrolebinding.yaml**
 
-```yaml
+
+
+
+resources:
+- pods
+- namespaces
+➡ Used for log enrichment.
+Purpose
+Binds RBAC permissions to Fluentd service account.
+Tested fluentd/templates/clusterrolebinding.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -361,11 +448,10 @@ subjects:
   - kind: ServiceAccount
     name: fluentd
     namespace: logging
-```
 
-* **templates/configmap.yaml**
 
-```yaml
+Tested fluentd/templates/configmap.yaml
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -378,6 +464,7 @@ data:
       path /var/log/containers/*.log
       tag kubernetes.*
       read_from_head true
+      pos_file /var/log/fluentd-containers.log.pos
       <parse>
         @type cri
       </parse>
@@ -404,16 +491,35 @@ data:
         flush_interval 5s
       </buffer>
     </match>
-```
 
-* **templates/daemonset.yaml**
 
-```yaml
+
+Log Flow Explained
+/var/log/containers/*.log
+   ↓
+Fluentd
+   ↓
+Elasticsearch
+Key Sections
+Section
+Purpose
+<source>
+Reads container logs
+<filter>
+Adds Kubernetes metadata
+<match>
+Sends logs to Elasticsearch
+
+
+Tested fluentd/templates/daemonset.yaml
+
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: fluentd
   namespace: logging
+  labels:
+    app: fluentd
 spec:
   selector:
     matchLabels:
@@ -424,14 +530,17 @@ spec:
         app: fluentd
     spec:
       serviceAccountName: fluentd
+      priorityClassName: system-cluster-critical
       tolerations:
-      - key: "node-role.kubernetes.io/master"
-        operator: "Exists"
-        effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/disk-pressure"
+          operator: "Exists"
+          effect: "NoSchedule"
       containers:
       - name: fluentd
         image: {{ .Values.fluentd.image }}
-        imagePullPolicy: IfNotPresent
         resources:
           requests:
             cpu: "100m"
@@ -440,78 +549,85 @@ spec:
             cpu: "500m"
             memory: "500Mi"
         volumeMounts:
-        - name: varlog
-          mountPath: /var/log
-        - name: config
-          mountPath: /fluentd/etc
+          - name: varlog
+            mountPath: /var/log
+          - name: config
+            mountPath: /fluentd/etc
+          - name: fluentd-buffer
+            mountPath: /var/log/fluentd-buffers
       volumes:
-      - name: varlog
-        hostPath:
-          path: /var/log
-          type: Directory
-      - name: config
-        configMap:
-          name: fluentd-config
-```
+        - name: varlog
+          hostPath:
+            path: /var/log
+            type: Directory
+        - name: config
+          configMap:
+            name: fluentd-config
+        - name: fluentd-buffer
+          hostPath:
+            path: /mnt/fluentd-buffer
+            type: DirectoryOrCreate
 
----
 
-# **4️⃣ Installation Steps**
 
-### **Step 1: Create Namespaces**
 
-```bash
+Why DaemonSet?
+✔ One Fluentd pod per node
+✔ Collects all node logs
+Volume Mounts
+/var/log
+➡ Access to container logs on host.
+End-to-End Data Flow Summary
+Container Logs
+   ↓
+Fluentd DaemonSet
+   ↓
+Elasticsearch Indices
+   ↓
+Kibana Dashboards
+
+
+Installation Steps (Step-by-Step)
+
+Step 1:  Create Namespaces
 kubectl create namespace elastic
 kubectl create namespace logging
-```
 
----
+Step 2:  Update Helm Dependencies
+cd efk-stack
+helm dependency update
 
-### **Step 2: Deploy EFK Stack**
+Step 3:  Install EFK Stack
+helm install efk-stack . -n elastic
 
-```bash
-cd ~/opsmx-work/SRE-Work/task/efk-stack
-helm dependency update charts/efk-stack
-helm install efk-stack charts/efk-stack -n elastic
-```
-
----
-
-### **Step 3: Verify Deployments**
-
-```bash
+Verification Steps
+Pod Status
 kubectl get pods -n elastic
 kubectl get pods -n logging
-kubectl get svc -n elastic
-kubectl get daemonset -n logging
-kubectl get ingress -n elastic
-```
-
----
-
-### **Step 4: Test Elasticsearch**
-
-```bash
-kubectl exec -it <elasticsearch-pod> -n elastic -- curl -u elastic:Elastic@123 http://localhost:9200/_cluster/health?pretty
-```
-
----
-
-### **Step 5: Test Kibana**
-
-```bash
+Expected:
+Elasticsearch → Running
+Kibana → Running
+Fluentd → Running on all nodes
+Test Elasticsearch
+kubectl exec -it elasticsearch-0 -n elastic \
+-- curl -u elastic:Elastic@123 http://localhost:9200/_cluster/health
+Expected:
+"status": "green"
+Access Kibana
 kubectl port-forward svc/kibana -n elastic 5601:5601
-# Open http://localhost:5601 in browser
-# Create index pattern: ssd-k8s-logs*
-```
+Open browser:
+http://localhost:5601
 
----
+13.4 Create Index Pattern
+ssd-k8s-logs*
+Common Operations
+Upgrade
+helm upgrade efk-stack . -n elastic
 
-✅ This **full Helm setup** is production-ready, with **separate namespaces**, **Fluentd integrated to Elasticsearch**, and **Kibana Ingress enabled**.
 
----
+Uninstall
+helm uninstall efk-stack -n elastic
+Fluentd Logs
+kubectl logs -n logging daemonset/fluentd
 
-If you want, I can also create a **ready-to-copy zip of the entire `efk-stack` directory with all subcharts and templates**, so you can just deploy it without creating each file manually.
 
-Do you want me to prepare that zip?
-](https://docs.google.com/document/d/19a80fCmHH1hqrJ0iJu7WwYSB83GMx9-zW5hjMZIxPJA/edit?tab=t.0#heading=h.scwh51xvduoe)
