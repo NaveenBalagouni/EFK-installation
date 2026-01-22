@@ -1,4 +1,4 @@
-# EFK-installation
+[# EFK-installation
 
 Absolutely! Since you want a **ready-to-use, fully structured Helm chart setup** for EFK (Elasticsearch, Fluentd, Kibana) with **separate directories for each subchart** and a parent chart, I will outline the **entire structure and installation steps** for a production-ready deployment.
 
@@ -514,3 +514,4 @@ kubectl port-forward svc/kibana -n elastic 5601:5601
 If you want, I can also create a **ready-to-copy zip of the entire `efk-stack` directory with all subcharts and templates**, so you can just deploy it without creating each file manually.
 
 Do you want me to prepare that zip?
+](https://docs.google.com/document/d/19a80fCmHH1hqrJ0iJu7WwYSB83GMx9-zW5hjMZIxPJA/edit?tab=t.0#heading=h.scwh51xvduoe)
